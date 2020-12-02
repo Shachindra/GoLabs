@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html style="height: 100%;">
+
+<head>
+  <title>File Upload</title>
+</head>
+
+<body style="margin: 0; height: 100%; font-family: arial;">
+
+  <div style="height: 100%; background: #00A3D9;">
+    <div style="text-align: center; padding: 100px 0; background: #00BFFF;">
+      <h1 style="color: #fff;">File Upload using Go Language</h1>
+    </div>
+    <div style="text-align: center; padding: 50px 0;">
+      <h2 style="color: #fff;">Upload Files</h2>
+      <form style="text-align: left; max-width: 600px; margin: 0 auto;" action="/upload" method="post" enctype="multipart/form-data">
+        File to upload: <input type="file" name="fileSelection" id="fileSelection">
+        <input type="submit" style="display: block; background: #444; border: none; padding: 10px 50px; margin: 30px auto; color: #fff; cursor: pointer;" value="Upload"/>
+      </form>
+    </div>
+  </div>
+
+</body>
+
+</html>
