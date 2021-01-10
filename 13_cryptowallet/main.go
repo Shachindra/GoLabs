@@ -3,11 +3,14 @@ package main
 import (
 	"context"
 	"crypto/ecdsa"
+	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"log"
 	"math"
 	"math/big"
+	"strconv"
 
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcutil/hdkeychain"
@@ -15,6 +18,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/crypto/ecies"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/tyler-smith/go-bip39"
@@ -33,20 +37,15 @@ func main() {
 		fmt.Printf("Error: %+v", err)
 	}
 
-	privateKey, publicKey, path, err := hdWallet(*mnemonic)
+	privateKey, publicKey, path, err := hdWallet(*mnemonic) // Verify: https://iancoleman.io/bip39/
 	if err != nil {
 		fmt.Printf("Error: %+v", err)
 	}
 	privateKeyBytes := crypto.FromECDSA(privateKey)
 	privateKeyHex := hexutil.Encode(privateKeyBytes) // hexutil.Encode(privateKeyBytes)[2:] for without 0x
 	publicKeyBytes := crypto.FromECDSAPub(publicKey)
-	publicKeyHex := hexutil.Encode(publicKeyBytes[1:])
+	publicKeyHex := hexutil.Encode(publicKeyBytes[1:]) // As Ethereum does not DER encode its public keys, public keys in Ethereum are only 64 bytes long.
 	walletAddress := crypto.PubkeyToAddress(*publicKey).Hex()
-
-	client, err := ethclient.Dial("https://rinkeby.infura.io/v3/my-api-key")
-	if err != nil {
-		log.Fatal(err)
-	}
 
 	// Display mnemonic and keys
 	fmt.Println("Mnemonic: ", *mnemonic)
@@ -54,6 +53,37 @@ func main() {
 	fmt.Println("ETH Public Key: ", publicKeyHex)
 	fmt.Println("ETH Wallet Address: ", walletAddress)
 	fmt.Println("Path: ", *path)
+
+	// Elliptic-curve Cryptography ECIES Encryption and Decryption
+	testData := "Secret message needing some obfuscation"
+	fmt.Println("Test Data:", testData)
+	hashData := calculateHashcode(testData)
+	fmt.Println("SHA256 encrypted:", hashData) // https://www.programmersought.com/article/2838230410/
+	testDataBytes := []byte(testData)
+
+	// ecdsa.GenerateKey(secp256k1.S256(), rand.Reader) // https://asecuritysite.com/encryption/ecdh3
+	ecdsaPrivateKey, err := crypto.HexToECDSA(hexutil.Encode(privateKeyBytes)[2:])
+	eciesPrivateKey := ecies.ImportECDSA(ecdsaPrivateKey)
+	eciesPublicKey := eciesPrivateKey.PublicKey
+
+	// Encryption
+	encryptedData, err := ecies.Encrypt(rand.Reader, &eciesPublicKey, testDataBytes, nil, nil)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("ecc public key encrypted:", hex.EncodeToString(encryptedData))
+
+	// Decryption
+	decryptedData, err := eciesPrivateKey.Decrypt(encryptedData, nil, nil)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("Private Key Decryption:", string(decryptedData))
+
+	client, err := ethclient.Dial("https://rinkeby.infura.io/v3/my-api-key")
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	nonce, err := client.PendingNonceAt(context.Background(), crypto.PubkeyToAddress(*publicKey))
 	if err != nil {
@@ -161,7 +191,7 @@ func hdWallet(mnemonic string) (*ecdsa.PrivateKey, *ecdsa.PublicKey, *string, er
 		return nil, nil, nil, err
 	}
 	privateKey := btcecPrivKey.ToECDSA()
-	publicKey := &privateKey.PublicKey
+	publicKey := &privateKey.PublicKey // Starts with 0x04. Contains DER encoding of the public key (which is what Bitcoin and all its fork uses)
 	path := "m/44H/60H/0H/0/0"
 	return privateKey, publicKey, &path, nil
 }
@@ -179,4 +209,32 @@ func (ac *AccountKey) LoadKey() error {
 		ac.Key = key
 	}
 	return err
+}
+
+func calculateHashcode(data string) string {
+	nonce := 0
+	var str string
+	var check string
+	pass := false
+	var dif int = 4
+	for nonce = 0; ; nonce++ {
+		str = ""
+		check = ""
+		check = data + strconv.Itoa(nonce)
+		h := sha256.New()
+		h.Write([]byte(check))
+		hashed := h.Sum(nil)
+		str = hex.EncodeToString(hashed)
+		for i := 0; i < dif; i++ {
+			if str[i] != '0' {
+				break
+			}
+			if i == dif-1 {
+				pass = true
+			}
+		}
+		if pass == true {
+			return str
+		}
+	}
 }
